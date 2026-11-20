@@ -399,6 +399,14 @@ def _enable_win_vt_mode() -> Callable[[], None]:
     return lambda: None
 
 
+# Tokyo Night 单色调极简配色（与原生 `/resume` 亮蓝无底色风格对齐）
+_FG_ACCENT = "\x1b[38;2;122;162;247m"        # #7aa2f7 亮蓝（搜索提示）
+_FG_ACCENT_BOLD = "\x1b[1;38;2;122;162;247m" # #7aa2f7 加粗亮蓝（标题与选中行，不变背景）
+_FG_DIVIDER = "\x1b[38;2;65;72;104m"         # #414868 分割线
+_FG_MUTED = "\x1b[38;2;154;165;206m"         # #9aa5ce 提示文字
+_RESET = "\x1b[0m"
+
+
 def _render_picker_frame(
     sessions: list[dict[str, Any]],
     filtered: list[dict[str, Any]],
@@ -407,10 +415,10 @@ def _render_picker_frame(
     cols: int,
     lines: int,
 ) -> tuple[str, int, int, int]:
-    """渲染单帧选单输出（极简单色调、紧凑版心、0 闪烁重绘）。"""
+    """渲染单帧选单输出（Tokyo Night 亮蓝无底色选中、舒展留白、紧凑版心、0 闪烁重绘）。"""
     cols = max(50, cols)
-    lines = max(12, lines)
-    page_size = max(5, lines - 7)
+    lines = max(13, lines)
+    page_size = max(5, lines - 8)
 
     total = len(filtered)
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -424,24 +432,29 @@ def _render_picker_frame(
     start = page * page_size
     end = min(total, start + page_size)
 
+    # 排版留白：左 2 格 + 指示符 2 格 + 标题列 + 列间 4 格 + 模型列 + 右 2 格（共 10 格固定开销）
+    overhead = 10
     max_model_len = max((_display_width(s["model_label"]) for s in sessions), default=25)
     max_title_len = max((_display_width(s["title"]) for s in sessions), default=40)
-    model_w = min(max(max_model_len, 25), max(18, cols // 2 - 4))
-    title_w = min(max(max_title_len + 2, 42), max(16, cols - model_w - 8))
-    if 6 + title_w + model_w > cols:
-        title_w = max(12, cols - model_w - 6)
-    box_w = min(cols, 6 + title_w + model_w)
+    model_w = min(max(max_model_len, 25), max(18, cols // 2 - 6))
+    title_w = min(max(max_title_len + 2, 42), max(14, cols - model_w - overhead))
+    if overhead + title_w + model_w > cols:
+        title_w = max(12, cols - model_w - overhead)
+    box_w = min(cols, overhead + title_w + model_w)
 
-    divider = f"\x1b[90m{'─' * box_w}\x1b[0m\x1b[K\r\n"
+    inner_rule = "─" * max(10, box_w - 4)
+    divider = f"  {_FG_DIVIDER}{inner_rule}{_RESET}  \x1b[K\r\n"
 
     buf: list[str] = ["\x1b[H"]
-    header = f" Conversations ({total})  Page {page + 1}/{total_pages}"
-    buf.append(f"\x1b[1;36m{_fit_cell(header, box_w)}\x1b[0m\x1b[K\r\n")
-    buf.append(f"\x1b[36m{_fit_cell(f' > Search: {query}_', box_w)}\x1b[0m\x1b[K\r\n")
+    header = f"  Conversations ({total})  Page {page + 1}/{total_pages}"
+    buf.append(f"{_FG_ACCENT_BOLD}{_fit_cell(header, box_w)}{_RESET}\x1b[K\r\n")
+    buf.append(f"{_FG_ACCENT}{_fit_cell(f'  > Search: {query}_', box_w)}{_RESET}\x1b[K\r\n")
     buf.append(divider)
+    buf.append("\x1b[K\r\n")
 
     if not filtered:
-        buf.append("   \x1b[90mNo matching conversations.\x1b[0m\x1b[K\r\n")
+        empty_row = _fit_cell("    No matching conversations.", box_w)
+        buf.append(f"{_FG_MUTED}{empty_row}{_RESET}\x1b[K\r\n")
         for _ in range(page_size - 1):
             buf.append("\x1b[K\r\n")
     else:
@@ -451,17 +464,19 @@ def _render_picker_frame(
             prefix = "❯ " if selected else "  "
             t_col = _fit_cell(s["title"], title_w)
             m_col = _fit_cell(s["model_label"], model_w)
-            row_str = f" {prefix}{t_col}  {m_col} "
+            row_str = f"  {prefix}{t_col}    {m_col}  "
+            fitted = _fit_cell(row_str, box_w)
             if selected:
-                buf.append(f"\x1b[1;30;46m{_fit_cell(row_str, box_w)}\x1b[0m\x1b[K\r\n")
+                buf.append(f"{_FG_ACCENT_BOLD}{fitted}{_RESET}\x1b[K\r\n")
             else:
-                buf.append(f"{_fit_cell(row_str, box_w)}\x1b[0m\x1b[K\r\n")
+                buf.append(f"{fitted}{_RESET}\x1b[K\r\n")
         for _ in range(page_size - (end - start)):
             buf.append("\x1b[K\r\n")
 
+    buf.append("\x1b[K\r\n")
     buf.append(divider)
-    hint = " ↑↓ Move  ←→ Page  Enter Resume  Esc Clear/Quit"
-    buf.append(f"\x1b[90m{_fit_cell(hint, cols)}\x1b[0m\x1b[K\x1b[J")
+    hint = "  ↑↓ Move  ←→ Page  Enter Resume  Esc Clear/Quit"
+    buf.append(f"{_FG_MUTED}{_fit_cell(hint, cols)}{_RESET}\x1b[K\x1b[J")
     return "".join(buf), cursor, page_size, box_w
 
 

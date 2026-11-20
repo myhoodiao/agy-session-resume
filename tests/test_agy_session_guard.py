@@ -327,13 +327,17 @@ class TestAgySessionGuard(unittest.TestCase):
         self.assertNotIn("\x1b[2J", frame)
         self.assertNotIn("\x1b[38;5;", frame)
         self.assertNotIn("\x1b[48;5;", frame)
-        self.assertIn("\x1b[1;36m", frame)
-        self.assertIn("\x1b[36m", frame)
-        self.assertIn("\x1b[1;30;46m", frame)
+        self.assertNotIn("\x1b[48;2;", frame)
+        self.assertNotIn("\x1b[1;30;46m", frame)
+        self.assertIn("\x1b[1;38;2;122;162;247m", frame)
+        self.assertIn("\x1b[38;2;122;162;247m", frame)
+        self.assertIn("\x1b[38;2;65;72;104m", frame)
         self.assertIn("❯ ", frame)
         self.assertIn("↑↓ Move", frame)
 
         lines_out = frame.split("\r\n")
+        # 列表上方应保留一行留白
+        self.assertEqual(ANSI_RE.sub("", lines_out[3]), "")
         for raw_line in lines_out[:-1]:
             plain = ANSI_RE.sub("", raw_line)
             if plain.strip():
